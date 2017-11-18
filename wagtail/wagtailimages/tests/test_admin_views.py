@@ -55,20 +55,20 @@ class TestImageIndexView(TestCase, WagtailTestUtils):
                 collection=evil_plans_collection
             )
 
-        response = self.get({'collection_id': evil_plans_collection.id, 'p': 2})
+        response = self.get({'collection': evil_plans_collection.id, 'p': 2})
         self.assertEqual(response.status_code, 200)
 
         response_body = response.content.decode('utf8')
 
-        # prev link should exist and include collection_id
+        # prev link should exist and include collection
         self.assertTrue(
-            ("?p=1&amp;collection_id=%i" % evil_plans_collection.id) in response_body or
-            ("?collection_id=%i&amp;p=1" % evil_plans_collection.id) in response_body
+            ("?p=1&amp;collection=%i" % evil_plans_collection.id) in response_body or
+            ("?collection=%i&amp;p=1" % evil_plans_collection.id) in response_body
         )
-        # next link should exist and include collection_id
+        # next link should exist and include collection
         self.assertTrue(
-            ("?p=3&amp;collection_id=%i" % evil_plans_collection.id) in response_body or
-            ("?collection_id=%i&amp;p=3" % evil_plans_collection.id) in response_body
+            ("?p=3&amp;collection=%i" % evil_plans_collection.id) in response_body or
+            ("?collection=%i&amp;p=3" % evil_plans_collection.id) in response_body
         )
 
     def test_ordering(self):
@@ -79,6 +79,7 @@ class TestImageIndexView(TestCase, WagtailTestUtils):
 
 
 class TestImageAddView(TestCase, WagtailTestUtils):
+    # TODO: Add test for adding to collections other than Root
     def setUp(self):
         self.login()
 
@@ -108,8 +109,9 @@ class TestImageAddView(TestCase, WagtailTestUtils):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'wagtailimages/images/add.html')
 
+        # Make sure the collection chooser is on the page
         self.assertContains(response, '<label for="id_collection">')
-        self.assertContains(response, "Evil plans")
+        self.assertContains(response, '<input id="id_collection" name="collection"')
 
     def test_add(self):
         response = self.post({

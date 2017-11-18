@@ -6,7 +6,8 @@ from django.utils.translation import ugettext as _
 from wagtail.wagtailadmin.views import generic, mixins
 from wagtail.wagtailadmin.viewsets.model import ModelViewSet
 from wagtail.wagtailcore import hooks
-from wagtail.wagtailusers.forms import GroupForm, GroupPagePermissionFormSet
+from wagtail.wagtailusers.forms import (
+    GroupCollectionPermissionFormSet, GroupForm, GroupPagePermissionFormSet)
 
 _permission_panel_classes = None
 
@@ -14,7 +15,7 @@ _permission_panel_classes = None
 def get_permission_panel_classes():
     global _permission_panel_classes
     if _permission_panel_classes is None:
-        _permission_panel_classes = [GroupPagePermissionFormSet]
+        _permission_panel_classes = [GroupPagePermissionFormSet, GroupCollectionPermissionFormSet, ]
         for fn in hooks.get_hooks('register_group_permission_panel'):
             _permission_panel_classes.append(fn())
 

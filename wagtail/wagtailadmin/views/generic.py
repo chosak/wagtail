@@ -1,6 +1,6 @@
 from __future__ import absolute_import, unicode_literals
 
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.translation import ugettext as _
 from django.utils.translation import ugettext_lazy
@@ -56,13 +56,28 @@ class IndexView(PermissionCheckedMixin, TemplateResponseMixin, BaseListView):
     any_permission_required = ['add', 'change', 'delete']
     template_name = None
 
-    def get_context_data(self, **kwargs):
-        context = super(IndexView, self).get_context_data(**kwargs)
-        context['can_add'] = (
-            self.permission_policy is None or
-            self.permission_policy.user_has_permission(self.request.user, 'add')
-        )
+    def get_queryset(self):
+        return self.model.objects.all()
+
+    def get_context(self):
+        object_list = self.get_queryset()
+
+        context = {
+            'view': self,
+            'object_list': object_list,
+            'can_add': (
+                self.permission_policy is None or
+                self.permission_policy.user_has_permission(self.request.user, 'add')
+            ),
+        }
+        if self.context_object_name:
+            context[self.context_object_name] = object_list
+
         return context
+
+    def get(self, request):
+        context = self.get_context()
+        return render(request, self.template_name, context)
 
 
 class CreateView(PermissionCheckedMixin, TemplateResponseMixin, BaseCreateView):
