@@ -441,6 +441,3 @@ class StreamValue(collections.Sequence):
 
     def __html__(self):
         return self.stream_block.render(self)
-
-    def __str__(self):
-        return self.__html__()
