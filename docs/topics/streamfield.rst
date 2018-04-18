@@ -591,46 +591,7 @@ Since ``first_name``, ``surname``, ``photo`` and ``biography`` are defined as bl
         {% include_block value.biography %}
     </div>
 
-Writing ``{{ my_block }}`` is roughly equivalent to ``{% include_block my_block %}``, but the short form is more restrictive, as it does not pass variables from the calling template such as ``request`` or ``page``; for this reason, it is recommended that you only use it for simple values that do not render HTML of their own. For example, if our PersonBlock used the template:
-
-.. code-block:: html+django
-
-    {% load wagtailimages_tags %}
-
-    <div class="person">
-        {% image value.photo width-400 %}
-        <h2>{{ value.first_name }} {{ value.surname }}</h2>
-
-        {% if request.user.is_authenticated %}
-            <a href="#">Contact this person</a>
-        {% endif %}
-
-        {{ value.biography }}
-    </div>
-
-then the ``request.user.is_authenticated`` test would not work correctly when rendering the block through a ``{{ ... }}`` tag:
-
-.. code-block:: html+django
-
-    {# Incorrect: #}
-
-    {% for block in page.body %}
-        {% if block.block_type == 'person' %}
-            <div>
-                {{ block }}
-            </div>
-        {% endif %}
-    {% endfor %}
-
-    {# Correct: #}
-
-    {% for block in page.body %}
-        {% if block.block_type == 'person' %}
-            <div>
-                {% include_block block %}
-            </div>
-        {% endif %}
-    {% endfor %}
+Note that writing ``{{ my_block }}`` is not supported as a valid way to render a block. ``{% include_block my_block %}`` should always be used.
 
 Like Django's ``{% include %}`` tag, ``{% include_block %}`` also allows passing additional variables to the included template, through the syntax ``{% include_block my_block with foo="bar" %}``:
 
