@@ -3,6 +3,7 @@ from django.utils.functional import cached_property
 
 from wagtail.admin.compare import BlockComparison
 from wagtail.core.blocks import ChooserBlock
+from wagtail.core.blocks import StructBlock, IntegerBlock #HT START END
 
 from .shortcuts import get_rendition_or_not_found
 
