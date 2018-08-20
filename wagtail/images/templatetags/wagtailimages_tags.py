@@ -111,6 +111,7 @@ class ImageNode(template.Node):
         except KeyError:
             pass
         # HT END
+        logger.warning(self.filter.spec)
 
         rendition = get_rendition_or_not_found(image, self.filter)
 
