@@ -15,12 +15,13 @@ from .pages import WagtailAdminPageForm  # NOQA
 #
 # We want these to be available in this module during deprecation, but can't simply do
 # `from .auth import *` or similar as this is susceptible to circular imports when importing
-# any submodule (see https://github.com/wagtail/wagtail/issues/4515). As a workaround, we
-# fiddle this module's definition in sys.modules to be an object with a custom __getattr__
-# method that intercepts accesses to these names and lazily imports them while also
-# producing a deprecation warning.
+# any submodule (see https://github.com/wagtail/wagtail/issues/4515).
+#
+# As a workaround, we register a new custom importer for Python's module loading so that
+# any attempts to load those deprecated names work properly while also producing a
+# deprecation warning.
 
-MOVED_DEFINITIONS = {
+_MOVED_DEFINITIONS = {
     'LoginForm': 'wagtail.admin.forms.auth',
     'PasswordResetForm': 'wagtail.admin.forms.auth',
 
@@ -44,37 +45,60 @@ MOVED_DEFINITIONS = {
 }
 
 
-class MovedDefinitionHandler(object):
-    def __init__(self, real_module, moved_definitions):
-        self.real_module = real_module
+class _SubmoduleImporter:
+    def __init__(self, name, moved_definitions):
+        self.name = name
         self.moved_definitions = moved_definitions
 
-    def __getattr__(self, name):
+    def find_module(self, fullname, path):
+        if self._find_in_submodule(fullname):
+            return self
+
+    def load_module(self, fullname):
         try:
-            return getattr(self.real_module, name)
-        except AttributeError as e:
-            try:
-                # is the missing name one of our moved definitions?
-                new_module_name = self.moved_definitions[name]
-            except KeyError:
-                # raise the original AttributeError without including the inner try/catch
-                # in the stack trace
-                raise e from None
+            return sys.modules[fullname]
+        except KeyError:
+            pass
 
-            warnings.warn(
-                "%s has been moved from wagtail.admin.forms to %s" % (name, new_module_name),
-                category=RemovedInWagtail25Warning
-            )
+        submodule_name, attr = self._find_in_submodule(fullname)
 
-            # load the requested definition from the module named in moved_definitions
-            new_module = import_module(new_module_name)
-            definition = getattr(new_module, name)
+        submodule = import_module(submodule_name)
 
-            # stash that definition into the current module so that we don't have to
-            # redo this import next time we access it
-            setattr(self.real_module, name, definition)
+        # This shouldn't fail assuming that the list above contains
+        # only references to valid submodule imports.
+        imported = getattr(submodule, attr)
 
-            return definition
+        warnings.warn(
+            "%s has been moved from wagtail.admin.forms to %s" % (attr, submodule_name),
+            category=RemovedInWagtail25Warning
+        )
+
+        sys.modules[fullname] = imported
+        return imported
+
+    def _find_in_submodule(self, fullname):
+        if fullname.startswith(self.name + '.'):
+            attr = fullname.split('.')[-1]
+
+            if attr in self.moved_definitions:
+                return self.moved_definitions[attr], attr
 
 
-sys.modules[__name__] = MovedDefinitionHandler(sys.modules[__name__], MOVED_DEFINITIONS)
+_importer = _SubmoduleImporter(__name__, _MOVED_DEFINITIONS)
+
+
+# Make sure there's only ever one importer like this.
+# Inspired by https://github.com/benjaminp/six/blob/edb7d0051202280d44939fd48863d244fe7b2c2b/six.py#L935
+if sys.meta_path:
+    for i, importer in enumerate(sys.meta_path):
+        if (
+            type(importer).__name__ == '_SubmoduleImporter' and
+            importer.__name__ == __name__
+        ):
+            del sys.meta_path[i]
+            break
+
+        del i, importer
+
+
+sys.meta_path.append(_importer)
