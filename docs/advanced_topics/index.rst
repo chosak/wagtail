@@ -9,6 +9,7 @@ Advanced topics
     documents/index
     embeds
     add_to_django_project
+    proxy_models
     deploying
     performance
     i18n
