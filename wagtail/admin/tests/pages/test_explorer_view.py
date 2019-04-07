@@ -6,7 +6,7 @@ from django.urls import reverse
 
 from wagtail.admin.tests.pages.timestamps import local_datetime
 from wagtail.core.models import GroupPagePermission, Page
-from wagtail.tests.testapp.models import SimplePage, SingleEventPage, StandardIndex
+from wagtail.tests.testapp.models import SimplePage, SimpleProxyPage, SingleEventPage, StandardIndex
 from wagtail.tests.utils import WagtailTestUtils
 
 
@@ -22,6 +22,14 @@ class TestPageExplorer(TestCase, WagtailTestUtils):
             content="hello",
         )
         self.root_page.add_child(instance=self.child_page)
+
+        # Add child page
+        self.proxy_child_page = SimpleProxyPage(
+            title="Jello world!",
+            slug="jello-world",
+            content="jello",
+        )
+        self.root_page.add_child(instance=self.proxy_child_page)
 
         # more child pages to test ordering
         self.old_page = StandardIndex(
@@ -51,7 +59,7 @@ class TestPageExplorer(TestCase, WagtailTestUtils):
         # child pages should be most recent first
         # (with null latest_revision_created_at at the end)
         page_ids = [page.id for page in response.context['pages']]
-        self.assertEqual(page_ids, [self.new_page.id, self.old_page.id, self.child_page.id])
+        self.assertEqual(page_ids, [self.new_page.id, self.old_page.id, self.child_page.id, self.proxy_child_page.id])
 
     def test_explore_root(self):
         response = self.client.get(reverse('wagtailadmin_explore_root'))
@@ -83,7 +91,7 @@ class TestPageExplorer(TestCase, WagtailTestUtils):
 
         # child pages should be ordered by title
         page_ids = [page.id for page in response.context['pages']]
-        self.assertEqual(page_ids, [self.child_page.id, self.new_page.id, self.old_page.id])
+        self.assertEqual(page_ids, [self.child_page.id, self.proxy_child_page.id, self.new_page.id, self.old_page.id])
 
     def test_reverse_ordering(self):
         response = self.client.get(
@@ -96,7 +104,7 @@ class TestPageExplorer(TestCase, WagtailTestUtils):
 
         # child pages should be ordered by title
         page_ids = [page.id for page in response.context['pages']]
-        self.assertEqual(page_ids, [self.old_page.id, self.new_page.id, self.child_page.id])
+        self.assertEqual(page_ids, [self.old_page.id, self.new_page.id, self.proxy_child_page.id, self.child_page.id])
 
     def test_ordering_by_last_revision_forward(self):
         response = self.client.get(
@@ -110,7 +118,7 @@ class TestPageExplorer(TestCase, WagtailTestUtils):
         # child pages should be oldest revision first
         # (with null latest_revision_created_at at the start)
         page_ids = [page.id for page in response.context['pages']]
-        self.assertEqual(page_ids, [self.child_page.id, self.old_page.id, self.new_page.id])
+        self.assertEqual(page_ids, [self.child_page.id, self.proxy_child_page.id, self.old_page.id, self.new_page.id])
 
     def test_invalid_ordering(self):
         response = self.client.get(
@@ -132,7 +140,7 @@ class TestPageExplorer(TestCase, WagtailTestUtils):
 
         # child pages should be ordered by native tree order (i.e. by creation time)
         page_ids = [page.id for page in response.context['pages']]
-        self.assertEqual(page_ids, [self.child_page.id, self.old_page.id, self.new_page.id])
+        self.assertEqual(page_ids, [self.child_page.id, self.proxy_child_page.id, self.old_page.id, self.new_page.id])
 
         # Pages must not be paginated
         self.assertNotIsInstance(response.context['pages'], paginator.Page)
@@ -238,6 +246,10 @@ class TestPageExplorer(TestCase, WagtailTestUtils):
         self.make_event_pages(count=1)
         response = self.client.get(reverse('wagtailadmin_explore', args=(self.root_page.id, )))
         self.assertContains(response, 'New event 0 (single event)')
+        # SimplePage and SimpleProxyPage also override get_admin_display_title(),
+        # so that those should be used also
+        self.assertContains(response, 'Hello world! (simple page)')
+        self.assertContains(response, 'Jello world! (simple page) (proxy)')
 
         new_event = SingleEventPage.objects.latest('pk')
         response = self.client.get(reverse('wagtailadmin_explore', args=(new_event.id, )))
@@ -247,14 +259,18 @@ class TestPageExplorer(TestCase, WagtailTestUtils):
         # Reorder view should also use specific pages
         # (provided there are <100 pages in the listing, as this may be a significant
         # performance hit on larger listings)
-        # There are 3 pages created in setUp, so 96 more add to a total of 99.
-        self.make_event_pages(count=96)
+        # There are 4 pages created in setUp, so 95 more add to a total of 99.
+        self.make_event_pages(count=95)
         response = self.client.get(reverse('wagtailadmin_explore', args=(self.root_page.id, )) + '?ordering=ord')
         self.assertContains(response, 'New event 0 (single event)')
+        # SimplePage and SimpleProxyPage also override get_admin_display_title(),
+        # so that those should be used also
+        self.assertContains(response, 'Hello world! (simple page)')
+        self.assertContains(response, 'Jello world! (simple page) (proxy)')
 
     def test_ordering_100_or_more_pages_uses_generic_page_without_custom_display_title(self):
-        # There are 3 pages created in setUp, so 97 more add to a total of 100.
-        self.make_event_pages(count=97)
+        # There are 4 pages created in setUp, so 96 more add to a total of 100.
+        self.make_event_pages(count=96)
         response = self.client.get(reverse('wagtailadmin_explore', args=(self.root_page.id, )) + '?ordering=ord')
         self.assertNotContains(response, 'New event 0 (single event)')
 
@@ -263,6 +279,12 @@ class TestPageExplorer(TestCase, WagtailTestUtils):
         self.assertEqual(response.status_code, 200)
 
         self.assertIsInstance(response.context['parent_page'], SimplePage)
+
+    def test_parent_page_is_specific_for_proxy_model(self):
+        response = self.client.get(reverse('wagtailadmin_explore', args=(self.proxy_child_page.id, )))
+        self.assertEqual(response.status_code, 200)
+
+        self.assertIsInstance(response.context['parent_page'], SimpleProxyPage)
 
     def test_explorer_no_perms(self):
         self.user.is_superuser = False

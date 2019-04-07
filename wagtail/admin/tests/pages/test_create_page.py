@@ -32,6 +32,7 @@ class TestPageCreation(TestCase, WagtailTestUtils):
         self.assertEqual(response.status_code, 200)
 
         self.assertContains(response, "Simple page")
+        self.assertContains(response, "Simple proxy page")
         target_url = reverse('wagtailadmin_pages:add', args=('tests', 'simplepage', self.root_page.id))
         self.assertContains(response, 'href="%s"' % target_url)
         # List of available page types should not contain pages with is_creatable = False
