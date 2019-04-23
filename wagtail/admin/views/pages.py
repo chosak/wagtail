@@ -1,5 +1,6 @@
 from time import time
 
+from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
@@ -151,11 +152,14 @@ def add_subpage(request, parent_page_id):
 
 def content_type_use(request, content_type_app_name, content_type_model_name):
     try:
-        content_type = ContentType.objects.get_by_natural_key(content_type_app_name, content_type_model_name)
-    except ContentType.DoesNotExist:
+        page_class = apps.get_model(content_type_app_name, content_type_model_name)
+    except LookupError:
         raise Http404
 
-    page_class = content_type.model_class()
+    try:
+        content_type = get_content_type_for_model(page_class)
+    except ContentType.DoesNotExist:
+        raise Http404
 
     # page_class must be a Page type and not some other random model
     if not issubclass(page_class, Page):
@@ -180,13 +184,16 @@ def create(request, content_type_app_name, content_type_model_name, parent_page_
     if not parent_page_perms.can_add_subpage():
         raise PermissionDenied
 
+    # Get class
     try:
-        content_type = ContentType.objects.get_by_natural_key(content_type_app_name, content_type_model_name)
-    except ContentType.DoesNotExist:
+        page_class = apps.get_model(content_type_app_name, content_type_model_name)
+    except LookupError:
         raise Http404
 
-    # Get class
-    page_class = content_type.model_class()
+    try:
+        content_type = get_content_type_for_model(page_class)
+    except ContentType.DoesNotExist:
+        raise Http404
 
     # Make sure the class is a descendant of Page
     if not issubclass(page_class, Page):
