@@ -550,7 +550,7 @@ class TestSpecificQuery(TestCase):
             qs = root.get_descendants().specific()
 
         with self.assertNumQueries(4):
-            # One query to get page type and ID, one query per concrete page type:
+            # One query to get page type and ID, plus one query per concrete page type:
             # EventIndex, EventPage, SimplePage, SimplePage
             pages = list(qs)
 
@@ -598,7 +598,8 @@ class TestSpecificQuery(TestCase):
             qs = Page.objects.specific().live().in_menu().order_by('-url_path')[:5]
 
         with self.assertNumQueries(4):
-            # Metadata, EventIndex, EventPage, SimplePage/SimpleProxyPage/SimpleProxyPageDeux
+            # One query to get page type and ID, plus one query per concrete page type:
+            # EventIndex, EventPage, SimplePage, SimplePage
             pages = list(qs)
 
         self.assertEqual(len(pages), 5)
