@@ -15,7 +15,7 @@ class DocumentLinkHandler(LinkHandler):
         return get_document_model()
 
     @classmethod
-    def expand_db_attributes(cls, attrs):
+    def expand_db_attributes(cls, attrs, context=None):
         try:
             doc = cls.get_instance(attrs)
             return '<a href="%s">' % escape(doc.url)

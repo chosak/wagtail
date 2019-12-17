@@ -2,7 +2,9 @@ import jinja2
 import jinja2.nodes
 from jinja2.ext import Extension
 
-from .templatetags.wagtailcore_tags import pageurl, richtext, slugurl, wagtail_version
+from .templatetags.wagtailcore_tags import (
+    pageurl, richtext, richtext_filter, slugurl, wagtail_version
+)
 
 
 class WagtailCoreExtension(Extension):
@@ -13,11 +15,12 @@ class WagtailCoreExtension(Extension):
 
         self.environment.globals.update({
             'pageurl': jinja2.contextfunction(pageurl),
+            'richtext': jinja2.contextfunction(richtext),
             'slugurl': jinja2.contextfunction(slugurl),
             'wagtail_version': wagtail_version,
         })
         self.environment.filters.update({
-            'richtext': richtext,
+            'richtext': richtext_filter,
         })
 
     def parse(self, parser):

@@ -1,8 +1,11 @@
+import warnings
+
 from django.db.models import Model
 from django.utils.safestring import mark_safe
 
 from wagtail.core.rich_text.feature_registry import FeatureRegistry
 from wagtail.core.rich_text.rewriters import EmbedRewriter, LinkRewriter, MultiRuleRewriter
+from wagtail.utils.deprecation import RemovedInWagtail210Warning
 
 
 features = FeatureRegistry()
@@ -15,7 +18,7 @@ features = FeatureRegistry()
 FRONTEND_REWRITER = None
 
 
-def expand_db_html(html):
+def expand_db_html(html, context=None):
     """
     Expand database-representation HTML into proper HTML usable on front-end templates
     """
@@ -29,7 +32,7 @@ def expand_db_html(html):
             EmbedRewriter({embedtype: handler.expand_db_attributes for embedtype, handler in embed_rules.items()})
         ])
 
-    return FRONTEND_REWRITER(html)
+    return FRONTEND_REWRITER(html, context=context)
 
 
 class RichText:
@@ -42,8 +45,25 @@ class RichText:
     def __init__(self, source):
         self.source = (source or '')
 
+    def render(self, context=None):
+        return mark_safe(self.html(context=context))
+
+    def html(self, context=None):
+        return (
+            '<div class="rich-text">'
+            + expand_db_html(self.source, context=context)
+            + '</div>'
+        )
+
     def __html__(self):
-        return '<div class="rich-text">' + expand_db_html(self.source) + '</div>'
+        warnings.warn(
+            (
+                "Render RichText objects using their render() method or the "
+                "richtext() template tag"
+            ),
+            category=RemovedInWagtail210Warning
+        )
+        return self.html()
 
     def __str__(self):
         return mark_safe(self.__html__())
@@ -77,10 +97,11 @@ class EntityHandler:
         return model._default_manager.get(id=attrs['id'])
 
     @staticmethod
-    def expand_db_attributes(attrs: dict) -> str:
+    def expand_db_attributes(attrs: dict, context: dict = None) -> str:
         """
-        Given a dict of attributes from the entity tag
-        stored in the database, returns the real HTML representation.
+        Given a dict of attributes from the entity tag stored in the database,
+        and the current request, if available, return the real HTML
+        representation for this entity.
         """
         raise NotImplementedError
 

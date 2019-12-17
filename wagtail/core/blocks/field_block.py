@@ -500,6 +500,9 @@ class RichTextBlock(FieldBlock):
         # the JSONish representation
         return value.source
 
+    def render_basic(self, value, context=None):
+        return value.render(context=context)
+
     @cached_property
     def field(self):
         from wagtail.admin.rich_text import get_rich_text_editor_widget

@@ -1,3 +1,5 @@
+import warnings
+
 from django import template
 from django.core.cache import cache
 from django.http import HttpRequest
@@ -6,9 +8,10 @@ from django.urls.exceptions import NoReverseMatch
 from django.utils.safestring import SafeString
 
 from wagtail.core.models import Page, Site
-from wagtail.core.templatetags.wagtailcore_tags import richtext, slugurl
+from wagtail.core.templatetags.wagtailcore_tags import richtext, richtext_filter, slugurl
 from wagtail.core.utils import resolve_model_string
 from wagtail.tests.testapp.models import SimplePage
+from wagtail.utils.deprecation import RemovedInWagtail210Warning
 
 
 class TestPageUrlTags(TestCase):
@@ -281,19 +284,72 @@ class TestResolveModelString(TestCase):
 
 
 class TestRichtextTag(TestCase):
+    fixtures = ['test.json']
+
     def test_call_with_text(self):
-        result = richtext("Hello world!")
+        result = richtext({}, "Hello world!")
         self.assertEqual(result, '<div class="rich-text">Hello world!</div>')
         self.assertIsInstance(result, SafeString)
 
     def test_call_with_none(self):
-        result = richtext(None)
+        result = richtext({}, None)
         self.assertEqual(result, '<div class="rich-text"></div>')
 
     def test_call_with_invalid_value(self):
         with self.assertRaisesRegex(TypeError, "'richtext' template filter received an invalid value"):
-            richtext(42)
+            richtext({}, 42)
 
     def test_call_with_bytes(self):
         with self.assertRaisesRegex(TypeError, "'richtext' template filter received an invalid value"):
-            richtext(b"Hello world!")
+            richtext({}, b"Hello world!")
+
+    def test_call_uses_request(self):
+        request = HttpRequest()
+        text = '<a linktype="page" id="4">Christmas</a>'
+
+        home_page = Page.objects.get(url_path='/home/')
+        other_site = Site.objects.create(
+            hostname='other.com',
+            root_page=home_page.copy(update_attrs={'slug': 'other'})
+        )
+
+        request.site = Site.objects.get(is_default_site=True)
+        self.assertIn(
+            '<a href="/events/christmas/">',
+            richtext({'request': request}, text)
+        )
+
+        request.site = other_site
+        self.assertIn(
+            '<a href="http://localhost/events/christmas/">',
+            richtext({'request': request}, text)
+        )
+
+    def test_richtext_filter_deprecated(self):
+        with warnings.catch_warnings(record=True) as ws:
+            warnings.simplefilter('always')
+            self.assertEqual(
+                richtext_filter("Hello world!"),
+                '<div class="rich-text">Hello world!</div>'
+            )
+            self.assertEqual(len(ws), 1)
+            self.assertEqual(ws[0].category, RemovedInWagtail210Warning)
+
+    def test_template_richtext_filter_deprecated(self):
+        tmpl = template.Template("{% load wagtailcore_tags %}{{ text | richtext }}")
+
+        with warnings.catch_warnings(record=True) as ws:
+            warnings.simplefilter('always')
+            self.assertEqual(
+                tmpl.render(template.Context({'text': '<a linktype="page" id="2">Page</a>'})),
+                '<div class="rich-text"><a href="/">Page</a></div>'
+            )
+            self.assertEqual(len(ws), 1)
+            self.assertEqual(ws[0].category, RemovedInWagtail210Warning)
+
+    def test_richtext_templatetag(self):
+        tmpl = template.Template("{% load wagtailcore_tags %}{% richtext text %}")
+        self.assertEqual(
+            tmpl.render(template.Context({'text': '<a linktype="page" id="2">Page</a>'})),
+            '<div class="rich-text"><a href="/">Page</a></div>'
+        )

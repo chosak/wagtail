@@ -1,12 +1,14 @@
+import warnings
+
 from django import template
 from django.shortcuts import reverse
 from django.template.defaulttags import token_kwargs
 from django.utils.encoding import force_str
-from django.utils.safestring import mark_safe
 
 from wagtail import VERSION, __version__
 from wagtail.core.models import Page
-from wagtail.core.rich_text import RichText, expand_db_html
+from wagtail.core.rich_text import RichText
+from wagtail.utils.deprecation import RemovedInWagtail210Warning
 from wagtail.utils.version import get_main_version
 
 register = template.Library()
@@ -90,20 +92,30 @@ def wagtail_release_notes_path():
     return "%s.html" % get_main_version(VERSION)
 
 
-@register.filter
-def richtext(value):
-    if isinstance(value, RichText):
-        # passing a RichText value through the |richtext filter should have no effect
-        return value
-    elif value is None:
-        html = ''
-    else:
+@register.simple_tag(takes_context=True)
+def richtext(context, value):
+    if not isinstance(value, RichText):
+        if value is None:
+            value = ''
+
         if isinstance(value, str):
-            html = expand_db_html(value)
+            value = RichText(value)
         else:
             raise TypeError("'richtext' template filter received an invalid value; expected string, got {}.".format(type(value)))
 
-    return mark_safe('<div class="rich-text">' + html + '</div>')
+    return value.render(context)
+
+
+@register.filter(name='richtext')
+def richtext_filter(value):
+    warnings.warn(
+        (
+            "The use of 'richtext' in Django templates should be updated from "
+            "a filter {{ value | richtext }} to a tag {% richtext value %}"
+        ),
+        category=RemovedInWagtail210Warning
+    )
+    return richtext({}, value)
 
 
 class IncludeBlockNode(template.Node):

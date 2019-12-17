@@ -1,3 +1,6 @@
+import warnings
+
+from django.http import HttpRequest
 from django.template import engines
 from django.template.loader import render_to_string
 from django.test import TestCase
@@ -6,9 +9,11 @@ from wagtail import __version__
 from wagtail.core import blocks
 from wagtail.core.models import Page, Site
 from wagtail.tests.testapp.blocks import SectionBlock
+from wagtail.utils.deprecation import RemovedInWagtail210Warning
 
 
 class TestCoreGlobalsAndFilters(TestCase):
+    fixtures = ['test.json']
 
     def setUp(self):
         self.engine = engines['jinja2']
@@ -30,8 +35,49 @@ class TestCoreGlobalsAndFilters(TestCase):
     def test_richtext(self):
         richtext = '<p>Merry <a linktype="page" id="2">Christmas</a>!</p>'
         self.assertEqual(
-            self.render('{{ text|richtext }}', {'text': richtext}),
+            self.render('{{ richtext(text) }}', {'text': richtext}),
             '<div class="rich-text"><p>Merry <a href="/">Christmas</a>!</p></div>')
+
+    def test_richtext_uses_request(self):
+        request = HttpRequest()
+        text = '<a linktype="page" id="4">Christmas</a>'
+        jinja = '{{ richtext(text) }}'
+        home_page = Page.objects.get(url_path='/home/')
+
+        other_site = Site.objects.create(
+            hostname='other.com',
+            root_page=home_page.copy(update_attrs={'slug': 'other'})
+        )
+
+        request.site = Site.objects.get(is_default_site=True)
+        self.assertIn(
+            '<a href="/events/christmas/">',
+            self.render(
+                jinja,
+                {'text': text, 'request': request},
+                request_context=False
+            )
+        )
+
+        request.site = other_site
+        self.assertIn(
+            '<a href="http://localhost/events/christmas/">',
+            self.render(
+                jinja,
+                {'text': text, 'request': request},
+                request_context=False
+            )
+        )
+
+    def test_deprecated_richtext_filter(self):
+        with warnings.catch_warnings(record=True) as ws:
+            warnings.simplefilter('always')
+            self.assertEqual(
+                self.render('{{ "Hello world!" | richtext }}', {}),
+                '<div class="rich-text">Hello world!</div>'
+            )
+            self.assertEqual(len(ws), 1)
+            self.assertEqual(ws[0].category, RemovedInWagtail210Warning)
 
     def test_pageurl(self):
         page = Page.objects.get(pk=2)
@@ -89,9 +135,16 @@ class TestJinjaEscaping(TestCase):
             {'type': 'paragraph', 'value': '<p>Merry <a linktype="page" id="4">Christmas</a>!</p>'},
         ])
 
-        result = render_to_string('tests/jinja2/stream.html', {
-            'value': stream_value,
-        })
+        # Deprecated rendering of RichText objects without using richtext().
+        with warnings.catch_warnings(record=True) as ws:
+            warnings.simplefilter('always')
+
+            result = render_to_string('tests/jinja2/stream.html', {
+                'value': stream_value,
+            })
+
+            self.assertEqual(len(ws), 1)
+            self.assertEqual(ws[0].category, RemovedInWagtail210Warning)
 
         self.assertIn('<div class="rich-text"><p>Merry <a href="/events/christmas/">Christmas</a>!</p></div>', result)
 

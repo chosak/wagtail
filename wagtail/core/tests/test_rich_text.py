@@ -1,11 +1,14 @@
+import warnings
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 
+from wagtail.core.models import Page, Site
 from wagtail.core.rich_text import RichText, expand_db_html
 from wagtail.core.rich_text.feature_registry import FeatureRegistry
 from wagtail.core.rich_text.pages import PageLinkHandler
 from wagtail.core.rich_text.rewriters import LinkRewriter, extract_attrs
+from wagtail.utils.deprecation import RemovedInWagtail210Warning
 
 
 class TestPageLinktypeHandler(TestCase):
@@ -18,6 +21,59 @@ class TestPageLinktypeHandler(TestCase):
     def test_expand_db_attributes_not_for_editor(self):
         result = PageLinkHandler.expand_db_attributes({'id': 1})
         self.assertEqual(result, '<a href="None">')
+
+    def test_expand_db_attributes_uses_request(self):
+        request = RequestFactory().get('/')
+        request.site = Site.objects.get(is_default_site=True)
+
+        # Cache the site root paths.
+        Page.objects.get(pk=4).get_url(request=request)
+
+        # Because the link handler has the request, it can use the cached site
+        # root paths, and doesn't need to look them up again.
+        #
+        # We expect 2 queries: one to retrieve the base Page instance and then
+        # a second one to retrieve the specific page model instance.
+        with self.assertNumQueries(2):
+            self.assertEqual(
+                PageLinkHandler.expand_db_attributes(
+                    {'id': 4},
+                    context={'request': request}
+                ),
+                '<a href="/events/christmas/">'
+            )
+
+    def create_another_site(self):
+        return Site.objects.create(
+            hostname='another.com',
+            root_page=Page.objects.get(pk=7),
+            is_default_site=False
+        )
+
+    def test_render_with_request_same_site_relative_url(self):
+        self.create_another_site()
+        request = RequestFactory().get('/')
+        request.site = Site.objects.get(is_default_site=True)
+
+        self.assertEqual(
+            PageLinkHandler.expand_db_attributes(
+                {'id': 4},
+                context={'request': request},
+            ),
+            '<a href="/events/christmas/">'
+        )
+
+    def test_render_with_request_different_site_absolute_url(self):
+        request = RequestFactory().get('/')
+        request.site = self.create_another_site()
+
+        self.assertEqual(
+            PageLinkHandler.expand_db_attributes(
+                {'id': 4},
+                context={'request': request},
+            ),
+            '<a href="http://localhost/events/christmas/">'
+        )
 
 
 class TestExtractAttrs(TestCase):
@@ -159,3 +215,22 @@ class TestLinkRewriterTagReplacing(TestCase):
         # Also call the rule if a custom linktype is mentioned.
         link_with_custom_linktype = rewriter('<a linktype="custom" href="tel:+4917640206387">')
         self.assertEqual(link_with_custom_linktype, '<a data-phone="true" href="tel:+4917640206387">')
+
+
+class TestCustomEntityHandlers(TestCase):
+    def test_deprecated_expand_db_attributes_without_context(self):
+        """Test legacy rich text rewrite handlers that don't take a context."""
+        expected = '<a href="/deprecated-warning/">'
+
+        def expand_db_attributes_doesnt_take_context_kwarg(attrs):
+            return expected
+
+        rewriter = LinkRewriter({
+            'test': expand_db_attributes_doesnt_take_context_kwarg,
+        })
+
+        with warnings.catch_warnings(record=True) as ws:
+            warnings.simplefilter('always')
+            self.assertEqual(rewriter('<a linktype="test">'), expected)
+            self.assertEqual(len(ws), 1)
+            self.assertEqual(ws[0].category, RemovedInWagtail210Warning)

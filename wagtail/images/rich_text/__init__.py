@@ -15,7 +15,7 @@ class ImageEmbedHandler(EmbedHandler):
         return get_image_model()
 
     @classmethod
-    def expand_db_attributes(cls, attrs):
+    def expand_db_attributes(cls, attrs, context=None):
         """
         Given a dict of attributes from the <embed> tag, return the real HTML
         representation for use on the front-end.

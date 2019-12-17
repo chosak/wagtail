@@ -3,10 +3,30 @@ Utility classes for rewriting elements of HTML-like strings
 """
 
 import re
+import warnings
+from functools import partial
+
+from wagtail.core.utils import accepts_kwarg
+from wagtail.utils.deprecation import RemovedInWagtail210Warning
 
 FIND_A_TAG = re.compile(r'<a(\b[^>]*)>')
 FIND_EMBED_TAG = re.compile(r'<embed(\b[^>]*)/>')
 FIND_ATTRS = re.compile(r'([\w-]+)\="([^"]*)"')
+
+
+def partial_with_context(fn, context):
+    """Bind a context kwarg to a function, if the function supports it."""
+    if accepts_kwarg(fn, 'context'):
+        return partial(fn, context=context)
+    else:
+        warnings.warn(
+            (
+                "The rich text rewrite handler %s needs to be updated to "
+                "accept an optional 'context' keyword argument"
+            ) % fn.__qualname__,
+            category=RemovedInWagtail210Warning
+        )
+        return fn
 
 
 def extract_attrs(attr_string):
@@ -29,17 +49,20 @@ class EmbedRewriter:
     def __init__(self, embed_rules):
         self.embed_rules = embed_rules
 
-    def replace_tag(self, match):
+    def replace_tag(self, match, context=None):
         attrs = extract_attrs(match.group(1))
         try:
             rule = self.embed_rules[attrs['embedtype']]
         except KeyError:
             # silently drop any tags with an unrecognised or missing embedtype attribute
             return ''
-        return rule(attrs)
+        return partial_with_context(rule, context)(attrs)
 
-    def __call__(self, html):
-        return FIND_EMBED_TAG.sub(self.replace_tag, html)
+    def __call__(self, html, context=None):
+        return FIND_EMBED_TAG.sub(
+            partial(self.replace_tag, context=context),
+            html
+        )
 
 
 class LinkRewriter:
@@ -51,7 +74,7 @@ class LinkRewriter:
     def __init__(self, link_rules):
         self.link_rules = link_rules
 
-    def replace_tag(self, match):
+    def replace_tag(self, match, context=None):
         attrs = extract_attrs(match.group(1))
         try:
             link_type = attrs['linktype']
@@ -83,10 +106,13 @@ class LinkRewriter:
             # unrecognised link type
             return '<a>'
 
-        return rule(attrs)
+        return partial_with_context(rule, context)(attrs)
 
-    def __call__(self, html):
-        return FIND_A_TAG.sub(self.replace_tag, html)
+    def __call__(self, html, context=None):
+        return FIND_A_TAG.sub(
+            partial(self.replace_tag, context=context),
+            html
+        )
 
 
 class MultiRuleRewriter:
@@ -94,7 +120,7 @@ class MultiRuleRewriter:
     def __init__(self, rewriters):
         self.rewriters = rewriters
 
-    def __call__(self, html):
+    def __call__(self, html, context=None):
         for rewrite in self.rewriters:
-            html = rewrite(html)
+            html = rewrite(html, context=context)
         return html
