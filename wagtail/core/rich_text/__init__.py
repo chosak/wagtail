@@ -1,3 +1,5 @@
+from typing import List
+
 from django.db.models import Model
 from django.utils.safestring import mark_safe
 
@@ -25,8 +27,14 @@ def expand_db_html(html):
         embed_rules = features.get_embed_types()
         link_rules = features.get_link_types()
         FRONTEND_REWRITER = MultiRuleRewriter([
-            LinkRewriter({linktype: handler.expand_db_attributes for linktype, handler in link_rules.items()}),
-            EmbedRewriter({embedtype: handler.expand_db_attributes for embedtype, handler in embed_rules.items()})
+            LinkRewriter(bulk_rules={
+                linktype: handler.expand_db_attributes_many
+                for linktype, handler in link_rules.items()
+            }),
+            EmbedRewriter(bulk_rules={
+                embedtype: handler.expand_db_attributes_many
+                for embedtype, handler in embed_rules.items()
+            })
         ])
 
     return FRONTEND_REWRITER(html)
@@ -83,6 +91,14 @@ class EntityHandler:
         stored in the database, returns the real HTML representation.
         """
         raise NotImplementedError
+
+    @classmethod
+    def expand_db_attributes_many(cls, attrs_list: List[dict]) -> List[str]:
+        """
+        Given a list of attribute dicts from a list of entity tags stored in
+        the database, return the real HTML representation of each one.
+        """
+        return list(map(cls.expand_db_attributes, attrs_list))
 
 
 class LinkHandler(EntityHandler):
