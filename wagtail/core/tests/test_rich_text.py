@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from wagtail.core.rich_text import RichText, expand_db_html
 from wagtail.core.rich_text.feature_registry import FeatureRegistry
@@ -66,6 +66,46 @@ class TestExpandDbHtml(TestCase):
         html = '<embed embedtype="media" url="http://www.youtube.com/watch" />'
         result = expand_db_html(html)
         self.assertIn('test html', result)
+
+    # Override CACHES so we don't generate any cache-related SQL queries
+    # (tests use DatabaseCache otherwise).
+    @override_settings(CACHES={
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        },
+    })
+    def test_expand_db_html_database_queries(self):
+        html = """
+This rich text has 12 links, and this test verifies that the code uses the
+minimal number of database queries (7) to expand them.
+
+All of these pages should be retrieved with 4 queries, one to do the base
+Page table lookup and then 1 each for the EventIndex, EventPage, and
+SimplePage tables.
+
+<a linktype="page" id="3">This links to an EventIndex page.</a>
+<a linktype="page" id="4">This links to an EventPage page.</a>
+<a linktype="page" id="5">This links to an EventPage page.</a>
+<a linktype="page" id="6">This links to an EventPage page.</a>
+<a linktype="page" id="9">This links to an EventPage page.</a>
+<a linktype="page" id="12">This links to an EventPage page.</a>
+<a linktype="page" id="13">This links to an EventPage page.</a>
+<a linktype="page" id="7">This links to a SimplePage page.</a>
+
+Both of these documents should be retrieved with a single query:
+
+<a linktype="document" id="1">This links to a document.</a>
+<a linktype="document" id="2">This links to another document.</a>
+
+Both of these images should be retrieved with a single query:
+
+<a linktype="image" id="1">This links to an image.</a>
+<a linktype="image" id="2">This links to another image.</a>
+
+Finally there's one additional query needed to do the Site root paths lookup.
+        """
+        with self.assertNumQueries(7):
+            expand_db_html(html)
 
 
 class TestRichTextValue(TestCase):
